@@ -52,18 +52,25 @@ static inline void counter_program_init(PIO pio, uint sm, uint offset) {
 }
 
 static inline uint64_t retrieve_counter(PIO pio, uint sm, uint offset) {
-  static uint64_t counter;
+  static union {
+    uint64_t full64;
+    struct { // RP2040 is little endian
+      uint32_t lo32;
+      uint32_t hi32;
+    } split;
+  } counter;
+
   // Retrieve new (32 bit) counter value
   pio_sm_put(pio, sm, counter_push_it + offset);
   uint32_t new_counter_lo = pio_sm_get_blocking(pio, sm);
+
   // Handle overflow situation
-  uint32_t old_counter_lo = static_cast<uint32_t>(counter);
-  if(new_counter_lo < old_counter_lo) {
-    counter += 0x0000000100000000;
-  }
+  counter.split.hi32 += (new_counter_lo < counter.split.lo32);
+
   // Update lower part of counter
-  counter = (counter & 0xFFFFFFFF00000000) | new_counter_lo;
-  return counter;
+  counter.split.lo32 = new_counter_lo;
+
+  return counter.full64;
 }
 
 #endif
